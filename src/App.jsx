@@ -6,6 +6,10 @@ import {
   createBooking, cancelBooking, adminCancelBooking,
   toggleSession, togglePatient, importPatients,
 } from "./db";
+import {
+  loginWithEmail, loginWithGoogle, logoutStaff,
+  watchAuth, getStaffProfile
+} from "./auth";
 
 const C = {
   purple: "167,139,250",
@@ -532,17 +536,45 @@ function SessioniView({ paziente, onLogout, showToast }) {
 }
 
 function AdminLoginView({ onLogin, onBack, showToast }) {
-  const [pw, setPw]         = useState("");
+  const [email, setEmail]     = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const ADMIN_PWD = import.meta.env.VITE_ADMIN_PASSWORD || "Segreteria2026!";
 
-  const submit = () => {
+  const finishLogin = async (user) => {
+    const staff = await getStaffProfile(user.uid);
+    if (!staff) {
+      await logoutStaff();
+      showToast("Account non autorizzato.", false);
+      return;
+    }
+    onLogin();
+  };
+
+  const submitEmail = async () => {
+    if (!email || !password) {
+      showToast("Inserisci email e password.", false);
+      return;
+    }
     setLoading(true);
-    setTimeout(()=>{
+    try {
+      const cred = await loginWithEmail(email.trim(), password);
+      await finishLogin(cred.user);
+    } catch (e) {
+      showToast("Accesso non riuscito.", false);
+    } finally {
       setLoading(false);
-      if (pw===ADMIN_PWD) onLogin();
-      else showToast("Password non corretta.", false);
-    }, 400);
+    }
+  };
+
+  const submitGoogle = async () => {
+    setLoading(true);
+    try {
+      const cred = await loginWithGoogle();
+      await finishLogin(cred.user);
+    } catch (e) {
+      showToast("Accesso Google non riuscito.", false);
+      setLoading(false);
+    }
   };
 
   return (
@@ -553,9 +585,17 @@ function AdminLoginView({ onLogin, onBack, showToast }) {
       </div>
       <Glass variant="base" radius={20}>
         <div style={{padding:"20px 18px",display:"flex",flexDirection:"column",gap:14}}>
+          <Input label="Email" type="email" placeholder="email@example.com"
+            value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!loading&&submitEmail()}/>
           <Input label="Password" type="password" placeholder="••••••••••"
-            value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()}/>
-          <Btn onClick={submit} loading={loading} disabled={!pw}>{loading?"Accesso…":"Accedi"}</Btn>
+            value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!loading&&submitEmail()}/>
+          <Btn onClick={submitEmail} loading={loading} disabled={!email||!password}>
+            {loading?"Accesso…":"Accedi con email"}
+          </Btn>
+          <div style={{height:1,background:"rgba(255,255,255,0.06)"}}/>
+          <Btn onClick={submitGoogle} loading={loading} variant="secondary" style={{opacity:loading?0.5:1,cursor:loading?"not-allowed":"pointer"}}>
+            Continua con Google
+          </Btn>
         </div>
       </Glass>
       <div onClick={onBack} style={{textAlign:"center",fontSize:13,color:"rgba(255,255,255,0.28)",cursor:"pointer"}}>
@@ -886,6 +926,8 @@ function AdminView({ onLogout, showToast }) {
 export default function App() {
   const [view, setView]         = useState("verifica");
   const [paziente, setPaziente] = useState(null);
+  const [staff, setStaff]       = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [toast, setToast]       = useState({ msg:"", ok:true, visible:false });
 
   const showToast = useCallback((msg, ok=true) => {
@@ -893,7 +935,46 @@ export default function App() {
     setTimeout(()=>setToast(p=>({...p,visible:false})), 3200);
   }, []);
 
-  const logout = () => { setPaziente(null); setView("verifica"); };
+  const logout = async () => { 
+    if (view === "admin") {
+      try {
+        await logoutStaff();
+      } catch(e) {
+        console.error(e);
+      }
+    }
+    setPaziente(null);
+    setStaff(null);
+    setView("verifica");
+  };
+
+  useEffect(() => {
+    const unsubscribe = watchAuth(async (user) => {
+      if (user) {
+        const profile = await getStaffProfile(user.uid);
+        if (profile) {
+          setStaff(profile);
+          setView("admin");
+        } else {
+          await logoutStaff();
+          setStaff(null);
+          setView("verifica");
+        }
+      } else {
+        setStaff(null);
+      }
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  if (authLoading) {
+    return (
+      <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
+        <Spinner size={32} />
+      </div>
+    );
+  }
 
   return (
     <div style={{
