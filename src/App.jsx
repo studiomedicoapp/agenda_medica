@@ -573,6 +573,7 @@ function AdminLoginView({ onLogin, onBack, showToast }) {
       await finishLogin(cred.user);
     } catch (e) {
       showToast("Accesso Google non riuscito.", false);
+    } finally {
       setLoading(false);
     }
   };
@@ -594,7 +595,25 @@ function AdminLoginView({ onLogin, onBack, showToast }) {
           </Btn>
           <div style={{height:1,background:"rgba(255,255,255,0.06)"}}/>
           <Btn onClick={submitGoogle} loading={loading} variant="secondary" style={{opacity:loading?0.5:1,cursor:loading?"not-allowed":"pointer"}}>
-            Continua con Google
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+              <span
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: "50%",
+                  background: "#fff",
+                  color: "#111",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 800,
+                  fontSize: 13
+                }}
+              >
+                G
+              </span>
+              Continua con Google
+            </span>
           </Btn>
         </div>
       </Glass>
